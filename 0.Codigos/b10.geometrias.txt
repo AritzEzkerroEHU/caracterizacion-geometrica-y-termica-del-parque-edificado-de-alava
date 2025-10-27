@@ -1,0 +1,273 @@
+import os, processing
+from qgis.core import QgsProject, QgsRasterLayer, QgsVectorLayer, QgsField, QgsExpression, QgsExpressionContext, QgsExpressionContextUtils, edit
+from PyQt5.QtCore import QVariant
+
+# ------------------------------
+# 1. Cortar raster con máscara
+# ------------------------------
+capa_raster = QgsProject.instance().mapLayersByName("MDS")[0]
+capa_mascara = QgsProject.instance().mapLayersByName("division_altura_1")[0]
+
+resultado = processing.run(
+    "gdal:cliprasterbymasklayer",
+    {
+        'INPUT': capa_raster,
+        'MASK': capa_mascara,
+        'CROP_TO_CUTLINE': True,
+        'KEEP_RESOLUTION': True,
+        'OUTPUT': 'TEMPORARY_OUTPUT'
+    }
+)
+
+capa_raster_cortado = QgsRasterLayer(resultado['OUTPUT'], "MDS_cortado")
+if not capa_raster_cortado.isValid():
+    raise ValueError("No se pudo cargar raster cortado")
+QgsProject.instance().addMapLayer(capa_raster_cortado)
+
+# ------------------------------
+# 2. Poligonizar
+# ------------------------------
+resultado_vect = processing.run(
+    "gdal:polygonize",
+    {'INPUT': capa_raster_cortado, 'BAND': 1, 'FIELD': 'DN', 'OUTPUT': 'TEMPORARY_OUTPUT'}
+)
+capa_vect = QgsVectorLayer(resultado_vect['OUTPUT'], "MDS_vect", "ogr")
+capa_vect.setSubsetString('"DN" != 0')
+QgsProject.instance().addMapLayer(capa_vect)
+
+# ------------------------------
+# 3. Unión espacial con DN
+# ------------------------------
+ruta_salida = os.path.join(ruta_modificado, "division_altura_2.gpkg")
+resultado_union = processing.run(
+    "native:joinattributesbylocation",
+    {
+        'INPUT': QgsProject.instance().mapLayersByName("division_altura_1")[0],
+        'JOIN': capa_vect,
+        'PREDICATE': [0],
+        'JOIN_FIELDS': ['DN'],
+        'METHOD': 1,
+        'PREFIX': 'ALT_',
+        'OUTPUT': ruta_salida
+    }
+)
+
+capa_union = QgsVectorLayer(ruta_salida, "division_altura_2", "ogr")
+QgsProject.instance().addMapLayer(capa_union)
+
+# ------------------------------
+# 4. Campos ALT_est, AreaCubier_div, V_div, USO_est, ADJ_sector, V_edi, AreaCubier_edi
+# ------------------------------
+# ------------------------------
+# Selecciona la capa sobre la que trabajar
+# ------------------------------
+nombre_capa = "division_altura_2"  # capa resultante de la unión anterior
+capas = QgsProject.instance().mapLayersByName(nombre_capa)
+if not capas:
+    raise ValueError(f"No se encontró la capa '{nombre_capa}'")
+capa = capas[0]
+
+# ------------------------------
+# Añadir campo ALT_est
+# ------------------------------
+if 'ALT_est' not in [f.name() for f in capa.fields()]:
+    capa.dataProvider().addAttributes([QgsField('ALT_est', QVariant.Double)])
+    capa.updateFields()
+
+# ------------------------------
+# Expresión CASE para ALT_est
+# ------------------------------
+expr_texto = """
+CASE
+    WHEN "csv_USOEDI" IN (212, 311, 312, 321, 322, 331, 332, 411, 412, 421, 422, 431, 432, 511, 512, 621, 622, 631, 632, 712, 721, 722, 731, 732, 812, 821, 822, 912, 921, 922, 1021, 1022, 1031) THEN 0
+    WHEN "ALT_DN" AND "ALT_calc" IS NULL THEN 0
+    WHEN "ALT_DN" IS NULL THEN "ALT_calc"
+    WHEN "ALT_calc" IS NULL THEN "ALT_DN"
+    WHEN "ANO_est" > 2017 THEN "ALT_calc"
+    WHEN "ALT_DN" < "ALT_calc" * 0.5 THEN "ALT_calc"
+    ELSE "ALT_DN"
+END
+"""
+
+expr = QgsExpression(expr_texto)
+context = QgsExpressionContext()
+context.appendScopes(QgsExpressionContextUtils.globalProjectLayerScopes(capa))
+
+# ------------------------------
+# Calcular el campo para cada feature
+# ------------------------------
+with edit(capa):
+    for feature in capa.getFeatures():
+        context.setFeature(feature)
+        valor = expr.evaluate(context)
+        feature['ALT_est'] = float(valor) if valor is not None else None
+        capa.updateFeature(feature)
+
+
+
+from qgis.core import QgsProject, QgsField, QgsExpression, QgsExpressionContext, QgsExpressionContextUtils
+from PyQt5.QtCore import QVariant
+from qgis.core import edit
+
+# ------------------------------
+# Seleccionamos la capa
+# ------------------------------
+nombre_capa = "division_altura_2"
+capas = QgsProject.instance().mapLayersByName(nombre_capa)
+if not capas:
+    raise ValueError(f"No se encontró la capa '{nombre_capa}'")
+capa = capas[0]
+
+# ------------------------------
+# Crear campo AreaCubier_div
+# ------------------------------
+if 'AreaCubier_div' not in [f.name() for f in capa.fields()]:
+    capa.dataProvider().addAttributes([QgsField('AreaCubier_div', QVariant.Double)])
+    capa.updateFields()
+
+expr_area = QgsExpression("$area")
+context = QgsExpressionContext()
+context.appendScopes(QgsExpressionContextUtils.globalProjectLayerScopes(capa))
+
+with edit(capa):
+    for feature in capa.getFeatures():
+        context.setFeature(feature)
+        feature['AreaCubier_div'] = float(expr_area.evaluate(context))
+        capa.updateFeature(feature)
+
+# ------------------------------
+# Crear campo V_div = AreaCubier_div * ALT_est
+# ------------------------------
+if 'V_div' not in [f.name() for f in capa.fields()]:
+    capa.dataProvider().addAttributes([QgsField('V_div', QVariant.Double)])
+    capa.updateFields()
+
+expr_volumen = QgsExpression('"AreaCubier_div" * "ALT_est"')
+
+with edit(capa):
+    for feature in capa.getFeatures():
+        context.setFeature(feature)
+        valor = expr_volumen.evaluate(context)
+        feature['V_div'] = float(valor) if valor is not None else None
+        capa.updateFeature(feature)
+
+# ------------------------------
+# Crear campo USO_est (clasificación)
+# ------------------------------
+if 'USO_est' not in [f.name() for f in capa.fields()]:
+    capa.dataProvider().addAttributes([QgsField('USO_est', QVariant.String, len=20)])
+    capa.updateFields()
+
+expr_uso = QgsExpression("""
+CASE
+    WHEN "csv_USOEDI" IN (111, 112, 121, 122, 131, 141, 142) THEN 'DOM.'
+    WHEN "csv_USOEDI" IN (311, 312, 321, 322, 331, 332, 411, 412, 421, 422, 431, 432, 511, 512, 621, 622, 631, 632, 711, 712, 721, 722, 731, 732, 811, 812, 821, 822, 831, 832, 911, 912, 921, 922, 1021, 1022, 1031) THEN 'SERV.'
+    WHEN "csv_USOEDI" IN (211, 212) THEN 'IND.'
+    WHEN "csv_USOEDI" IN (113, 114, 115, 123, 221, 222, 231, 232, 241, 521, 522, 531, 541, 542, 611, 612, 931, 932, 1011, 1012, 1032, 1033, 1034, 1035, 1036, 1037, 1038, 1039, 1041, 1051, 1052, 1053, 1061, 1062, 1063, 1071, 1081, 1082, 1083, 1084, 1091, 2119, 7771, 7772, 7773, 7774, 7775, 7777) THEN 'NC'
+    ELSE 'DESCONOCIDO'
+END
+""")
+
+with edit(capa):
+    for feature in capa.getFeatures():
+        context.setFeature(feature)
+        feature['USO_est'] = expr_uso.evaluate(context)
+        capa.updateFeature(feature)
+
+# ------------------------------
+# Crear campo ADJ_sector
+# ------------------------------
+if 'ADJ_sector' not in [f.name() for f in capa.fields()]:
+    capa.dataProvider().addAttributes([QgsField('ADJ_sector', QVariant.Int)])
+    capa.updateFields()
+
+expr_adj = QgsExpression("""
+CASE
+    WHEN "USO_est" = 'DOM.' THEN 1
+    WHEN "USO_est" = 'NC' THEN 0
+    WHEN "USO_est" = 'SERV.' THEN 10
+    WHEN "USO_est" = 'IND.' THEN 100
+    ELSE 0
+END
+""")
+
+with edit(capa):
+    for feature in capa.getFeatures():
+        context.setFeature(feature)
+        valor = expr_adj.evaluate(context)
+        feature['ADJ_sector'] = int(valor) if valor is not None else 0
+        capa.updateFeature(feature)
+
+
+
+from qgis.core import edit, QgsField, QgsProject
+from PyQt5.QtCore import QVariant
+
+# Seleccionamos la capa
+nombre_capa = "division_altura_2"
+capas = QgsProject.instance().mapLayersByName(nombre_capa)
+if not capas:
+    raise ValueError(f"No se encontró la capa '{nombre_capa}'")
+capa = capas[0]
+
+# Crear campo para almacenar la suma por edificio
+campo_suma = 'V_edi'
+if campo_suma not in [f.name() for f in capa.fields()]:
+    capa.dataProvider().addAttributes([QgsField(campo_suma, QVariant.Double)])
+    capa.updateFields()
+
+# ------------------------------
+# 1. Sumar V_div por CodEdifici
+# ------------------------------
+suma_por_edificio = {}
+for feature in capa.getFeatures():
+    cod = feature['CodEdifici']
+    valor = feature['V_div'] if feature['V_div'] is not None else 0
+    suma_por_edificio[cod] = suma_por_edificio.get(cod, 0) + valor
+
+# ------------------------------
+# 2. Actualizar cada feature con la suma total de su edificio
+# ------------------------------
+with edit(capa):
+    for feature in capa.getFeatures():
+        cod = feature['CodEdifici']
+        feature[campo_suma] = suma_por_edificio.get(cod, 0)
+        capa.updateFeature(feature)
+
+
+from qgis.core import edit, QgsField, QgsProject
+from PyQt5.QtCore import QVariant
+
+# Seleccionamos la capa
+nombre_capa = "division_altura_2"
+capas = QgsProject.instance().mapLayersByName(nombre_capa)
+if not capas:
+    raise ValueError(f"No se encontró la capa '{nombre_capa}'")
+capa = capas[0]
+
+# Crear campo para almacenar la suma por edificio
+campo_suma_area = 'AreaCubier_edi'
+if campo_suma_area not in [f.name() for f in capa.fields()]:
+    capa.dataProvider().addAttributes([QgsField(campo_suma_area, QVariant.Double)])
+    capa.updateFields()
+
+# ------------------------------
+# 1. Sumar AreaCubier_div por CodEdifici
+# ------------------------------
+suma_area_por_edificio = {}
+for feature in capa.getFeatures():
+    cod = feature['CodEdifici']
+    valor = feature['AreaCubier_div'] if feature['AreaCubier_div'] is not None else 0
+    suma_area_por_edificio[cod] = suma_area_por_edificio.get(cod, 0) + valor
+
+# ------------------------------
+# 2. Actualizar cada feature con la suma total de su edificio
+# ------------------------------
+with edit(capa):
+    for feature in capa.getFeatures():
+        cod = feature['CodEdifici']
+        feature[campo_suma_area] = suma_area_por_edificio.get(cod, 0)
+        capa.updateFeature(feature)
+
+
+

@@ -1,0 +1,68 @@
+from qgis.core import QgsProject, QgsField
+from PyQt5.QtCore import QVariant
+
+# --- 1. Obtener la capa ---
+nombre_capa = "division_altura_lineas_1"
+capas = QgsProject.instance().mapLayersByName(nombre_capa)
+if not capas:
+    raise Exception(f"No se encontró la capa '{nombre_capa}'")
+capa = capas[0]
+
+# --- 2. Crear los campos si no existen ---
+campos_necesarios = [
+    "SUP_fachada_ext_N",
+    "SUP_fachada_ext_NE",
+    "SUP_fachada_ext_E",
+    "SUP_fachada_ext_SE",
+    "SUP_fachada_ext_S",
+    "SUP_fachada_ext_SO",
+    "SUP_fachada_ext_O",
+    "SUP_fachada_ext_NO"
+]
+
+capa.startEditing()
+campos_existentes = [f.name() for f in capa.fields()]
+for nombre in campos_necesarios:
+    if nombre not in campos_existentes:
+        capa.addAttribute(QgsField(nombre, QVariant.Double, 'double', 20, 3))
+capa.updateFields()
+
+# --- 3. Preparar índices de campos ---
+idx = {nombre: capa.fields().indexOf(nombre) for nombre in campos_necesarios}
+
+# --- 4. Agrupar sumas por CodEdifici y orientacio ---
+suma_dict = {}
+for feature in capa.getFeatures():
+    cod = feature["CodEdifici"]
+    ori = feature["orientacio"]
+    sup = feature["SUP_fachada_ext"]
+
+    if cod is None or ori is None or sup is None:
+        continue
+
+    clave = (cod, ori)
+    if clave not in suma_dict:
+        suma_dict[clave] = 0.0
+    suma_dict[clave] += sup
+
+# --- 5. Rellenar valores en cada feature ---
+for feature in capa.getFeatures():
+    cod = feature["CodEdifici"]
+    ori_list = {
+        "N": "SUP_fachada_ext_N",
+        "NE": "SUP_fachada_ext_NE",
+        "E": "SUP_fachada_ext_E",
+        "SE": "SUP_fachada_ext_SE",
+        "S": "SUP_fachada_ext_S",
+        "SO": "SUP_fachada_ext_SO",
+        "O": "SUP_fachada_ext_O",
+        "NO": "SUP_fachada_ext_NO"
+    }
+
+    for ori, campo in ori_list.items():
+        valor = suma_dict.get((cod, ori), 0.0)
+        feature[campo] = round(valor, 3)
+    capa.updateFeature(feature)
+
+capa.commitChanges()
+

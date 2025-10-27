@@ -1,0 +1,55 @@
+import os
+from qgis.core import (
+    QgsProject,
+    QgsVectorLayer,
+    QgsRasterLayer
+)
+import processing
+from PyQt5.QtWidgets import QFileDialog
+
+ruta = QFileDialog.getExistingDirectory(None, "Selecciona la carpeta con los archivos originales")
+
+ruta_modificado = QFileDialog.getExistingDirectory(None, "Selecciona la carpeta para guardar los archivos modificados")
+
+if not os.path.exists(ruta_modificado):
+    os.makedirs(ruta_modificado)
+
+proyecto = QgsProject.instance()
+
+lista_tif = []
+
+for archivo in os.listdir(ruta):
+    ruta_completa = os.path.join(ruta, archivo)
+    nombre, extension = os.path.splitext(archivo)
+    extension = extension.lower()
+
+    if extension == ".shp":
+        capa = QgsVectorLayer(ruta_completa, nombre, "ogr")
+        if capa.isValid():
+            salida_corregida = os.path.join(ruta_modificado, f"{nombre}_corregida.shp")
+            processing.run(
+                "native:fixgeometries",
+                {'INPUT': capa, 'OUTPUT': salida_corregida}
+            )
+        else:
+            print(f"No se pudo cargar la capa vectorial: {archivo}")
+
+    elif extension == ".tif":
+        lista_tif.append(ruta_completa)
+
+if lista_tif:
+    salida_raster = os.path.join(ruta_modificado, "MDS.tif")
+    processing.run(
+        "gdal:merge",
+        {
+            'INPUT': lista_tif,
+            'PCT': False,
+            'SEPARATE': False,
+            'NODATA_INPUT': None,
+            'NODATA_OUTPUT': None,
+            'OPTIONS': '',
+            'DATA_TYPE': 0,
+            'OUTPUT': salida_raster
+        }
+    )
+

@@ -1,0 +1,36 @@
+import processing
+from qgis.core import QgsProject, QgsVectorLayer
+
+# --- 1. Obtener las capas ya cargadas ---
+capas_destino = QgsProject.instance().mapLayersByName("edificio_corregida")
+capas_origen = QgsProject.instance().mapLayersByName("division_altura_lineas_1")
+
+if not capas_destino:
+    raise Exception("No se encontró la capa 'edificio_corregida'")
+if not capas_origen:
+    raise Exception("No se encontró la capa 'division_altura_lineas_1'")
+
+capa_destino = capas_destino[0]
+capa_origen = capas_origen[0]
+
+# --- 2. Ejecutar unión en memoria ---
+resultado = processing.run("native:joinattributestable", {
+    'INPUT': capa_destino,
+    'FIELD': "CodEdifici",
+    'INPUT_2': capa_origen,
+    'FIELD_2': "CodEdifici",
+    'FIELDS_TO_COPY': [
+        "SUP_fachada_ext_N", "SUP_fachada_ext_NE", "SUP_fachada_ext_E",
+        "SUP_fachada_ext_SE", "SUP_fachada_ext_S", "SUP_fachada_ext_SO",
+        "SUP_fachada_ext_O", "SUP_fachada_ext_NO"
+    ],
+    'METHOD': 1,
+    'DISCARD_NONMATCHING': False,
+    'OUTPUT': 'memory:'  # capa resultado en memoria
+})
+
+# --- 3. Añadir al proyecto ---
+edificio_corregida_1 = resultado['OUTPUT']
+edificio_corregida_1.setName("edificio_corregida_1")
+QgsProject.instance().addMapLayer(edificio_corregida_1)
+

@@ -1,0 +1,13 @@
+from qgis.core import QgsProject, QgsVectorLayer, edit
+
+# --- 1. Obtener la capa ---
+nombre_capa = "edificio_corregida_3"
+capas = QgsProject.instance().mapLayersByName(nombre_capa)
+if not capas:
+    raise ValueError(f"No se encontró la capa '{nombre_capa}'")
+capa = capas[0]
+
+# --- 2. Aplicar filtro por atributo ---
+filtro = "\"USO_est\" = 'SERV.'"
+capa.setSubsetString(filtro)
+
