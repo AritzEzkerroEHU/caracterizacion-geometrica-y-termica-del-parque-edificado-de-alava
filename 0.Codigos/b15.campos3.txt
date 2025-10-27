@@ -1,0 +1,55 @@
+from qgis.core import QgsProject, QgsField
+from PyQt5.QtCore import QVariant
+
+# --- 1. Obtener la capa ---
+nombre_capa = "division_altura_lineas_1"
+capas = QgsProject.instance().mapLayersByName(nombre_capa)
+if not capas:
+    raise Exception(f"No se encontró la capa '{nombre_capa}'")
+capa = capas[0]
+
+# --- 2. Crear campos si no existen ---
+capa.startEditing()
+if 'ALT_fachada_ext' not in [f.name() for f in capa.fields()]:
+    capa.addAttribute(QgsField("ALT_fachada_ext", QVariant.Double, 'double', 20, 3))
+if 'SUP_fachada_ext' not in [f.name() for f in capa.fields()]:
+    capa.addAttribute(QgsField("SUP_fachada_ext", QVariant.Double, 'double', 20, 3))
+capa.updateFields()
+
+# --- 3. Función para calcular ALT_fachada_ext ---
+def calcular_alt_fachada(ADJ_sector, ADJ_sector_sum, ALT_est, ALT_est_min):
+    if ADJ_sector == 10:
+        if ADJ_sector_sum in (10, 11, 110):
+            return ALT_est
+        elif ADJ_sector_sum == 20:
+            return ALT_est - ALT_est_min
+    elif ADJ_sector == 100:
+        if ADJ_sector_sum in (100, 101, 110):
+            return ALT_est
+        elif ADJ_sector_sum == 200:
+            return ALT_est - ALT_est_min
+    return ALT_est  # valor por defecto
+
+# --- 4. Calcular y guardar valores ---
+idx_alt = capa.fields().indexOf("ALT_fachada_ext")
+idx_sup = capa.fields().indexOf("SUP_fachada_ext")
+
+for feature in capa.getFeatures():
+    ADJ_sector = feature["ADJ_sector"]
+    ADJ_sector_sum = feature["ADJ_sector_sum"]
+    ALT_est = feature["ALT_est"]
+    ALT_est_min = feature["ALT_est_min"]
+    Length = feature["Length"]
+
+    if None in (ADJ_sector, ADJ_sector_sum, ALT_est, ALT_est_min, Length):
+        continue  # saltar si hay valores nulos
+
+    alt_val = calcular_alt_fachada(ADJ_sector, ADJ_sector_sum, ALT_est, ALT_est_min)
+    sup_val = alt_val * Length
+
+    feature["ALT_fachada_ext"] = round(alt_val, 3)
+    feature["SUP_fachada_ext"] = round(sup_val, 3)
+    capa.updateFeature(feature)
+
+capa.commitChanges()
+

@@ -1,0 +1,69 @@
+import os
+from qgis.core import (
+    QgsProject,
+    QgsVectorLayer,
+    QgsField,
+    QgsExpression,
+    QgsExpressionContext,
+    QgsExpressionContextUtils
+)
+from PyQt5.QtCore import QVariant
+import pandas as pd
+
+def crear_campo_cod_edifici(nombre_archivo, nombre_capa_proyecto):
+    archivo_capa = os.path.join(ruta_modificado, nombre_archivo)
+    capa = QgsVectorLayer(archivo_capa, nombre_capa_proyecto, "ogr")
+    if not capa.isValid():
+        print(f"No se pudo cargar la capa {nombre_capa_proyecto}")
+        return
+    proyecto = QgsProject.instance()
+
+    if "CodEdifici" not in [f.name() for f in capa.fields()]:
+        capa.startEditing()
+        nuevo_campo = QgsField("CodEdifici", QVariant.String, len=50)
+        capa.dataProvider().addAttributes([nuevo_campo])
+        capa.updateFields()
+    else:
+        capa.startEditing()
+
+    expr = QgsExpression(
+        '"Municipio" || "Poligono" || "Parcela" || coalesce("Subparce", 1) || "Edific"'
+    )
+    context = QgsExpressionContext()
+    context.appendScopes(QgsExpressionContextUtils.globalProjectLayerScopes(capa))
+
+    for feat in capa.getFeatures():
+        context.setFeature(feat)
+        valor = expr.evaluate(context)
+        capa.changeAttributeValue(feat.id(), capa.fields().indexFromName("CodEdifici"), str(valor))
+
+    capa.commitChanges()
+
+
+crear_campo_cod_edifici("edificio_corregida.shp", "edificio_corregida")
+
+os.makedirs(ruta_modificado, exist_ok=True)
+
+archivos = [f for f in os.listdir(ruta) if f.endswith('.csv')]
+if not archivos:
+    raise FileNotFoundError("No se encontró ningún archivo CSV en la carpeta seleccionada.")
+archivo_csv = os.path.join(ruta, archivos[0])
+
+df = pd.read_csv(archivo_csv, delimiter=';', encoding='utf-8')
+
+def generar_cod_edifici(row):
+    CODMUN = str(row.get("CODMUN", ""))
+    CODPOL = str(int(row.get("CODPOL", 1)) if pd.notnull(row.get("CODPOL")) else 1)
+    CODPAR = str(row.get("CODPAR", ""))
+    CODSUB = str(row.get("CODSUB", "1")).strip() or "1"
+    CODEDI = str(row.get("CODEDI", ""))
+    return CODMUN + CODPOL + CODPAR + CODSUB + CODEDI
+
+df["CodEdifici"] = df.apply(generar_cod_edifici, axis=1).astype(str)
+
+columnas_salida = ["CodEdifici", "ANOCON", "ANOREF", "GRAREF", "ESTCON1", "USOEDI"]
+df_salida = df[columnas_salida]
+
+archivo_salida = os.path.join(ruta_modificado, "Edificios.csv")
+df_salida.to_csv(archivo_salida, sep=';', index=False, encoding='utf-8')
+

@@ -1,0 +1,30 @@
+import os
+from qgis.core import QgsProject, QgsVectorLayer
+
+# --- 1. Definir ruta del CSV dentro de la carpeta de modificados ---
+# Asumimos que 'ruta_modificado' está definida como en el bloque de exportación
+ruta_csv = os.path.join(ruta_modificado, "Parametros_Edificios.csv")
+ruta_csv_2 = os.path.join(ruta_modificado, "Parametros_Edificios_2.csv")
+ruta_csv_3 = os.path.join(ruta_modificado, "Parametros_Edificios_3.csv")
+
+# --- 2. Crear URI para tabla no espacial ---
+# Usamos delimitador ';' para que coincida con el CSV exportado
+uri = f"file:///{ruta_csv}?delimiter=;&useHeader=Yes&detectTypes=No"
+
+# --- 3. Cargar tabla en QGIS ---
+tabla = QgsVectorLayer(uri, "Parametros_Edificios", "delimitedtext")
+if tabla.isValid():
+    QgsProject.instance().addMapLayer(tabla)
+else:
+    print("❌ Error al cargar la tabla en QGIS")
+
+# --- 2. Crear URI para tabla no espacial ---
+# Usamos delimitador ';' para que coincida con el CSV exportado
+uri = f"file:///{ruta_csv_2}?delimiter=;&useHeader=Yes&detectTypes=No"
+
+# --- 3. Cargar tabla en QGIS ---
+tabla = QgsVectorLayer(uri, "Parametros_Edificios_2", "delimitedtext")
+if tabla.isValid():
+    QgsProject.instance().addMapLayer(tabla)
+else:
+    print("❌ Error al cargar la tabla en QGIS")

@@ -1,0 +1,71 @@
+from qgis.core import QgsProject, QgsField
+from PyQt5.QtCore import QVariant
+from math import atan2, degrees
+
+# --- 1. Obtener la capa ---
+nombre_capa = "division_altura_lineas_1"
+capas = QgsProject.instance().mapLayersByName(nombre_capa)
+if not capas:
+    raise Exception(f"No se encontró la capa '{nombre_capa}'")
+capa = capas[0]
+
+# --- 2. Verificar campos x1, y1, x2, y2 ---
+for campo in ['x1', 'y1', 'x2', 'y2']:
+    if campo not in [f.name() for f in capa.fields()]:
+        raise Exception(f"Falta el campo '{campo}'. Asegúrate de crearlo antes.")
+
+# --- 3. Crear campos angle y orientacio si no existen ---
+capa.startEditing()
+if 'angle' not in [f.name() for f in capa.fields()]:
+    capa.addAttribute(QgsField("angle", QVariant.Double, 'double', 20, 3))
+if 'orientacio' not in [f.name() for f in capa.fields()]:
+    capa.addAttribute(QgsField("orientacio", QVariant.String, 'string', 2))
+capa.updateFields()
+
+# --- 4. Función para calcular el angle ---
+def calcular_angle(x1, y1, x2, y2):
+    az = 90 + 180 + degrees(atan2(x2 - x1, y2 - y1))
+    return az - 360 if az > 360 else az
+
+# --- 5. Función para calcular orientacion ---
+def calcular_orientacio(angle):
+    if 0 <= angle < 22.5 or 337.5 <= angle <= 360:
+        return 'N'
+    elif 22.5 <= angle < 60:
+        return 'NE'
+    elif 60 <= angle < 111:
+        return 'E'
+    elif 111 <= angle < 162:
+        return 'SE'
+    elif 162 <= angle < 198:
+        return 'S'
+    elif 198 <= angle < 249:
+        return 'SO'
+    elif 249 <= angle < 300:
+        return 'O'
+    elif 300 <= angle < 337.5:
+        return 'NO'
+    return 'N'
+
+# --- 6. Calcular y guardar ---
+idx_angle = capa.fields().indexOf("angle")
+idx_orient = capa.fields().indexOf("orientacio")
+
+for feature in capa.getFeatures():
+    x1 = feature["x1"]
+    y1 = feature["y1"]
+    x2 = feature["x2"]
+    y2 = feature["y2"]
+
+    if None in (x1, y1, x2, y2):
+        continue  # saltar si hay valores nulos
+
+    angle_val = round(calcular_angle(x1, y1, x2, y2), 3)
+    orient_val = calcular_orientacio(angle_val)
+
+    feature.setAttribute(idx_angle, angle_val)
+    feature.setAttribute(idx_orient, orient_val)
+    capa.updateFeature(feature)
+
+capa.commitChanges()
+

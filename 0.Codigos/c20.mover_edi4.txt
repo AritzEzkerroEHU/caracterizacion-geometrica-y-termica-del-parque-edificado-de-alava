@@ -1,0 +1,48 @@
+from qgis.core import QgsProject, edit, QgsField
+from PyQt5.QtCore import QVariant
+
+# --- 1. Cargar las capas ---
+capa_destino = QgsProject.instance().mapLayersByName("edificio_corregida_3")[0]
+capa_origen = QgsProject.instance().mapLayersByName("division_altura_2")[0]
+
+# --- 2. Crear diccionario de referencia V_edi por CodEdifici ---
+valores_v_edi = {f['CodEdifici']: f['V_edi'] for f in capa_origen.getFeatures()}
+
+# --- 3. Crear campo V_edi si no existe ---
+if 'V_edi' not in [f.name() for f in capa_destino.fields()]:
+    capa_destino.dataProvider().addAttributes([QgsField('V_edi', QVariant.Double)])
+    capa_destino.updateFields()
+
+# --- 4. Rellenar campo V_edi usando CodEdifici como clave ---
+with edit(capa_destino):
+    for feature in capa_destino.getFeatures():
+        cod = feature['CodEdifici']
+        if cod in valores_v_edi:
+            feature['V_edi'] = valores_v_edi[cod]
+            capa_destino.updateFeature(feature)
+
+
+from qgis.core import QgsProject, edit, QgsField
+from PyQt5.QtCore import QVariant
+
+# --- 1. Cargar las capas ---
+capa_destino = QgsProject.instance().mapLayersByName("edificio_corregida_3")[0]
+capa_origen = QgsProject.instance().mapLayersByName("division_altura_2")[0]
+
+# --- 2. Crear diccionario de referencia AreaCubier_edi por CodEdifici ---
+valores_area = {f['CodEdifici']: f['AreaCubier_edi'] for f in capa_origen.getFeatures()}
+
+# --- 3. Crear campo AreaCubier_edi si no existe ---
+if 'AreaCubier_edi' not in [f.name() for f in capa_destino.fields()]:
+    capa_destino.dataProvider().addAttributes([QgsField('AreaCubier_edi', QVariant.Double)])
+    capa_destino.updateFields()
+
+# --- 4. Rellenar campo AreaCubier_edi usando CodEdifici como clave ---
+with edit(capa_destino):
+    for feature in capa_destino.getFeatures():
+        cod = feature['CodEdifici']
+        if cod in valores_area:
+            feature['AreaCubier_edi'] = valores_area[cod]
+            capa_destino.updateFeature(feature)
+
+

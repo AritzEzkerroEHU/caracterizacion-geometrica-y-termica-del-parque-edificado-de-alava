@@ -1,0 +1,50 @@
+import os
+from qgis.core import QgsProject, QgsVectorFileWriter
+import processing
+
+def crear_puntos_en_superficie(capa, ruta_salida, nombre_capa_salida="division_altura_punto"):
+    """
+    Crea puntos en superficie (point on surface) a partir de una capa de polígonos cargada
+    y guarda el resultado en un GeoPackage.
+    """
+    if not capa.isValid():
+        raise ValueError("La capa proporcionada no es válida")
+
+    resultado = processing.run(
+        "native:pointonsurface",
+        {'INPUT': capa, 'OUTPUT': 'memory:'}
+    )
+    capa_puntos = resultado['OUTPUT']
+    capa_puntos.setName(nombre_capa_salida)
+
+    carpeta = os.path.dirname(ruta_salida)
+    os.makedirs(carpeta, exist_ok=True)
+
+    if os.path.exists(ruta_salida):
+        os.remove(ruta_salida)
+
+    options = QgsVectorFileWriter.SaveVectorOptions()
+    options.driverName = "GPKG"
+    options.layerName = nombre_capa_salida
+    options.fileEncoding = "UTF-8"
+    options.actionOnExistingFile = QgsVectorFileWriter.CreateOrOverwriteFile
+
+    error, _ = QgsVectorFileWriter.writeAsVectorFormatV2(
+        capa_puntos, ruta_salida, QgsProject.instance().transformContext(), options
+    )
+
+    if error == QgsVectorFileWriter.NoError:
+        QgsProject.instance().addMapLayer(capa_puntos)
+    else:
+        print(f"ERROR al guardar la capa: {error}")
+
+nombre_capa = "division_altura_corregida"
+capas = QgsProject.instance().mapLayersByName(nombre_capa)
+if not capas:
+    raise ValueError(f"No se encontró la capa '{nombre_capa}' en el proyecto")
+capa_div = capas[0]
+
+ruta_salida = os.path.join(ruta_modificado, "division_altura_punto.gpkg")
+nombre_capa_salida = "division_altura_punto"
+
+crear_puntos_en_superficie(capa_div, ruta_salida, nombre_capa_salida)

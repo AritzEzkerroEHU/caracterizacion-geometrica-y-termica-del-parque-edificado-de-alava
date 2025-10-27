@@ -1,0 +1,45 @@
+from qgis.core import QgsProject
+import processing
+
+# -----------------------------
+# 1️⃣ Obtener la capa ya cargada en QGIS
+# -----------------------------
+nombre_capa = "division_altura_lineas"
+capas = QgsProject.instance().mapLayersByName(nombre_capa)
+if not capas:
+    raise ValueError(f"No se encontró la capa '{nombre_capa}' cargada en el proyecto")
+capa_vector = capas[0]
+
+# ============================
+# 2️⃣ Primer JoinByLocationSummary
+# ============================
+result1 = processing.run("qgis:joinbylocationsummary", {
+    'INPUT': capa_vector,
+    'JOIN': capa_vector,
+    'PREDICATE': [2],  # igual
+    'JOIN_FIELDS': ['ADJ_sector'],
+    'SUMMARIES': [5],  # suma
+    'DISCARD_NONMATCHING': False,
+    'OUTPUT': QgsProcessing.TEMPORARY_OUTPUT
+})
+
+capa1 = result1['OUTPUT']
+capa1.setName('division_altura_lineas_0')
+QgsProject.instance().addMapLayer(capa1)
+
+# ============================
+# 3️⃣ Segundo JoinByLocationSummary (temporal)
+# ============================
+result2 = processing.run("qgis:joinbylocationsummary", {
+    'INPUT': capa1,
+    'JOIN': capa1,
+    'PREDICATE': [2],  # igual
+    'JOIN_FIELDS': ['ALT_est'],
+    'SUMMARIES': [2, 3],  # 2 = mínimo, 3 = máximo
+    'DISCARD_NONMATCHING': False,
+    'OUTPUT': QgsProcessing.TEMPORARY_OUTPUT
+})
+
+capa2 = result2['OUTPUT']
+capa2.setName('division_altura_lineas_1')
+QgsProject.instance().addMapLayer(capa2)

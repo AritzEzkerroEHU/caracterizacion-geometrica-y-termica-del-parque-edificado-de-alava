@@ -1,0 +1,65 @@
+import os
+from qgis.core import QgsProject, QgsVectorLayer
+import processing
+
+def unir_cod_edifici(capa_puntos, capa_poligonos, ruta_salida, nombre_capa_salida="division_altura_punto_Cod", campo_codigo="CodEdifici"):
+    if not capa_puntos.isValid() or not capa_poligonos.isValid():
+        raise ValueError("Alguna de las capas proporcionadas no es válida")
+
+    params_join = {
+        'INPUT': capa_puntos,
+        'JOIN': capa_poligonos,
+        'PREDICATE': [5],  # dentro
+        'JOIN_FIELDS': [campo_codigo],
+        'METHOD': 1,
+        'DISCARD_NONMATCHING': False,
+        'OUTPUT': 'memory:'
+    }
+
+    resultado = processing.run("native:joinattributesbylocation", params_join)
+    capa_union = resultado['OUTPUT']
+
+    params_guardar = {
+        'INPUT': capa_union,
+        'OUTPUT': ruta_salida,
+        'LAYER_NAME': nombre_capa_salida
+    }
+    processing.run("native:savefeatures", params_guardar)
+
+    capa_union.setName(nombre_capa_salida)
+    QgsProject.instance().addMapLayer(capa_union)
+    return capa_union
+
+
+def unir_cod_en_poligonos(capa_poligonos, capa_puntos_cod, ruta_salida, nombre_capa_salida="division_altura_0", campo_codigo="CodEdifici"):
+    if not capa_poligonos.isValid() or not capa_puntos_cod.isValid():
+        raise ValueError("Alguna de las capas proporcionadas no es válida")
+
+    params_join = {
+        'INPUT': capa_poligonos,
+        'JOIN': capa_puntos_cod,
+        'PREDICATE': [0],  # intersecan
+        'JOIN_FIELDS': [campo_codigo],
+        'METHOD': 1,
+        'DISCARD_NONMATCHING': False,
+        'OUTPUT': ruta_salida
+    }
+
+    processing.run("native:joinattributesbylocation", params_join)
+    capa_union = QgsVectorLayer(ruta_salida, nombre_capa_salida, "ogr")
+    if not capa_union.isValid():
+        raise ValueError(f"No se pudo cargar {ruta_salida}")
+
+    QgsProject.instance().addMapLayer(capa_union)
+    return capa_union
+
+capa_puntos = QgsProject.instance().mapLayersByName("division_altura_punto")[0]
+capa_poligonos = QgsProject.instance().mapLayersByName("edificio_corregida")[0]
+ruta_salida_puntos = os.path.join(ruta_modificado, "division_altura_punto_CodEdifici.gpkg")
+
+capa_puntos_cod = unir_cod_edifici(capa_puntos, capa_poligonos, ruta_salida_puntos)
+
+capa_poligonos_base = QgsProject.instance().mapLayersByName("division_altura_corregida")[0]
+ruta_salida_poligonos = os.path.join(ruta_modificado, "division_altura_0.gpkg")
+
+capa_poligonos_cod = unir_cod_en_poligonos(capa_poligonos_base, capa_puntos_cod, ruta_salida_poligonos, nombre_capa_salida="division_altura_0")

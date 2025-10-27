@@ -1,0 +1,32 @@
+import csv
+import os
+from qgis.core import QgsProject
+
+# --- 1. Seleccionar la capa ---
+nombre_capa = "edificio_corregida_3"
+capas = QgsProject.instance().mapLayersByName(nombre_capa)
+if not capas:
+    raise ValueError(f"No se encontró la capa '{nombre_capa}'")
+capa = capas[0]
+
+# --- 2. Carpeta de salida dentro de la ruta modificados ---
+# Asumimos que `ruta_modificado` ya está definida como en tu segundo bloque
+os.makedirs(ruta_modificado, exist_ok=True)
+
+# Nombre del CSV
+ruta_csv = os.path.join(ruta_modificado, "Parametros_Edificios_2.csv")
+
+# --- 3. Escribir CSV ---
+with open(ruta_csv, 'w', newline='', encoding='utf-8') as csvfile:
+    writer = csv.writer(csvfile, delimiter=';')
+    
+    # Cabecera
+    writer.writerow(["UA +  ρVcp (KW/K)"])
+    
+    # Filas
+    for feature in capa.getFeatures():
+        get = lambda fld: feature[fld] if fld in feature.fields().names() else 0
+        writer.writerow([
+            get('UAeffplusRhoVcp'),
+        ])
+

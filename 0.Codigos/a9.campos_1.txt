@@ -1,0 +1,83 @@
+import os
+from qgis.core import (
+    QgsProject, QgsVectorLayer, QgsExpression,
+    QgsExpressionContext, QgsExpressionContextUtils, QgsField
+)
+from PyQt5.QtCore import QVariant
+import processing
+
+if 'ruta_modificado' not in globals():
+    raise ValueError("No existe la variable 'ruta_modificado'. Ejecuta primero el bloque 1 donde se selecciona la carpeta.")
+
+ruta_csv = os.path.join(ruta_modificado, "Edificios.csv")
+if not os.path.exists(ruta_csv):
+    raise FileNotFoundError(f"No se encontró {ruta_csv}. Ejecuta antes el bloque 2 para generarlo.")
+
+capa_poligonos = QgsProject.instance().mapLayersByName("division_altura_0")[0]
+ruta_salida = os.path.join(ruta_modificado, "division_altura_1.gpkg")
+nombre_capa_salida = "division_altura_1"
+campos_interes = ["ANOCON", "ANOREF", "GRAREF", "ESTCON1", "USOEDI"]
+
+os.makedirs(os.path.dirname(ruta_salida), exist_ok=True)
+
+if os.path.exists(ruta_salida):
+    os.remove(ruta_salida)
+
+resultado = processing.run(
+    "native:joinattributestable",
+    {
+        'INPUT': capa_poligonos,
+        'FIELD': 'CodEdifici',
+        'INPUT_2': ruta_csv,
+        'FIELD_2': 'CodEdifici',
+        'FIELDS_TO_COPY': campos_interes,
+        'METHOD': 1,  # Conservar solo los coincidentes
+        'DISCARD_NONMATCHING': False,
+        'PREFIX': 'csv_',
+        'OUTPUT': ruta_salida
+    }
+)
+
+capa_division_altura_1 = QgsVectorLayer(ruta_salida, nombre_capa_salida, "ogr")
+if not capa_division_altura_1.isValid():
+    raise ValueError(f"No se pudo cargar la capa resultante desde {ruta_salida}")
+QgsProject.instance().addMapLayer(capa_division_altura_1)
+
+prov = capa_division_altura_1.dataProvider()
+if prov.fieldNameIndex('ANO_est') == -1:
+    prov.addAttributes([QgsField('ANO_est', QVariant.Int)])
+if prov.fieldNameIndex('ALT_calc') == -1:
+    prov.addAttributes([QgsField('ALT_calc', QVariant.Double)])
+capa_division_altura_1.updateFields()
+
+exp_ano_est = """
+CASE
+    WHEN "csv_GRAREF" IN (1, 2) THEN round("csv_ANOREF")
+    WHEN "csv_GRAREF" IN (3, 4) THEN "csv_ANOCON" + round(("csv_ANOREF" - "csv_ANOCON") / 2)
+    ELSE round("csv_ANOCON")
+END
+"""
+
+capa_division_altura_1.startEditing()
+for feat in capa_division_altura_1.getFeatures():
+    context = QgsExpressionContext()
+    context.appendScopes(QgsExpressionContextUtils.globalProjectLayerScopes(capa_division_altura_1))
+    context.setFeature(feat)
+    feat['ANO_est'] = int(QgsExpression(exp_ano_est).evaluate(context) or 0)
+    capa_division_altura_1.updateFeature(feat)
+capa_division_altura_1.commitChanges()
+
+alturas = {'I': 4,'II': 7,'III': 10,'IV': 13,'V': 16,'VI': 19,'VII': 22,'VIII': 25,'IX': 28,'X': 31}
+
+capa_division_altura_1.startEditing()
+for feat in capa_division_altura_1.getFeatures():
+    divalt_text = feat['DivAlt']
+    total_alt = 0
+    if divalt_text:
+        niveles = divalt_text.upper().replace(" ", "").split('+')
+        total_alt = sum(alturas.get(n, 0) for n in niveles)
+    feat['ALT_calc'] = total_alt
+    capa_division_altura_1.updateFeature(feat)
+capa_division_altura_1.commitChanges()
+
+

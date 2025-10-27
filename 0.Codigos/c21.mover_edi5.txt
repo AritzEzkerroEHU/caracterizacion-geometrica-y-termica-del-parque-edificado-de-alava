@@ -1,0 +1,85 @@
+from qgis.core import QgsProject, QgsField, QgsVectorFileWriter
+from PyQt5.QtCore import QVariant
+
+# --- 4. Cargar la copia recién creada ---
+capa_copia = QgsProject.instance().mapLayersByName("edificio_corregida_3")
+if capa_copia:
+    capa_copia = capa_copia[0]
+else:
+    from qgis.core import QgsVectorLayer
+    capa_copia = QgsVectorLayer(ruta_destino + "|layername=edificio_corregida_3", "edificio_corregida_3", "ogr")
+    QgsProject.instance().addMapLayer(capa_copia)
+
+# --- 5. Añadir campos si no existen ---
+capa_copia.startEditing()
+campos_nuevos = []
+if 'PERD_ventil' not in [f.name() for f in capa_copia.fields()]:
+    campos_nuevos.append(QgsField("PERD_ventil", QVariant.Double))
+if 'SSE_cor' not in [f.name() for f in capa_copia.fields()]:
+    campos_nuevos.append(QgsField("SSE_cor", QVariant.Double))
+if 'SSE_anual' not in [f.name() for f in capa_copia.fields()]:
+    campos_nuevos.append(QgsField("SSE_anual", QVariant.Double))
+if 'compacidad' not in [f.name() for f in capa_copia.fields()]:
+    campos_nuevos.append(QgsField("compacidad", QVariant.Double))
+if 'A_sup' not in [f.name() for f in capa_copia.fields()]:
+    campos_nuevos.append(QgsField("A_sup", QVariant.Double))
+if 'flujo_masico' not in [f.name() for f in capa_copia.fields()]:
+    campos_nuevos.append(QgsField("flujo_masico", QVariant.Double))
+if 'UAeff' not in [f.name() for f in capa_copia.fields()]:
+    campos_nuevos.append(QgsField("UAeff", QVariant.Double))
+if 'RhoVcp' not in [f.name() for f in capa_copia.fields()]:
+    campos_nuevos.append(QgsField("RhoVcp", QVariant.Double))
+if 'UAeffplusRhoVcp' not in [f.name() for f in capa_copia.fields()]:
+    campos_nuevos.append(QgsField("UAeffplusRhoVcp", QVariant.Double))
+
+if campos_nuevos:
+    capa_copia.dataProvider().addAttributes(campos_nuevos)
+    capa_copia.updateFields()
+
+# --- 6. Calcular campos ---
+for feature in capa_copia.getFeatures():
+    Infiltraci1 = feature['Infiltraci']    
+    Ventilacio1 = feature['Ventilacio']   
+    feature['PERD_ventil'] = Infiltraci1 + Ventilacio1   
+    # SSE_cor
+    SSE_cor1 = (
+        feature['SUP_fachada_ext_N'] * 0.24 * 0.32 +
+        feature['SUP_fachada_ext_NE'] * 0.24 * 0.35 +
+        feature['SUP_fachada_ext_E'] * 0.24 * 0.57 +
+        feature['SUP_fachada_ext_SE'] * 0.24 * 0.83 +
+        feature['SUP_fachada_ext_S'] * 0.24 * 1.00 +
+        feature['SUP_fachada_ext_SO'] * 0.24 * 0.87 +
+        feature['SUP_fachada_ext_NO'] * 0.24 * 0.35 +
+        feature['SUP_fachada_ext_O'] * 0.24 * 0.59
+    )
+    feature['SSE_cor'] = SSE_cor1
+
+    # SSE_anual
+    SSE_anual1 = (
+        feature['SUP_fachada_ext_N'] * 0.24 * 0.44 +
+        feature['SUP_fachada_ext_NE'] * 0.24 * 0.52 +
+        feature['SUP_fachada_ext_E'] * 0.24 * 0.76 +
+        feature['SUP_fachada_ext_SE'] * 0.24 * 0.93 +
+        feature['SUP_fachada_ext_S'] * 0.24 * 1.00 +
+        feature['SUP_fachada_ext_SO'] * 0.24 * 0.97 +
+        feature['SUP_fachada_ext_NO'] * 0.24 * 0.80 +
+        feature['SUP_fachada_ext_O'] * 0.24 * 0.53
+    )
+    feature['SSE_anual'] = SSE_anual1
+    feature['compacidad'] = feature['V_edi'] / (
+    feature["SUP_fachada_ext_N"] + feature["SUP_fachada_ext_NO"] +
+    feature["SUP_fachada_ext_O"] + feature["SUP_fachada_ext_SO"] +
+    feature["SUP_fachada_ext_S"] + feature["SUP_fachada_ext_SE"] +
+    feature["SUP_fachada_ext_E"] + feature["SUP_fachada_ext_NE"] +
+    feature["AreaCubier_edi"]
+)
+    feature['A_sup'] =     feature["SUP_fachada_ext_N"] + feature["SUP_fachada_ext_NO"] +    feature["SUP_fachada_ext_O"] + feature["SUP_fachada_ext_SO"] +    feature["SUP_fachada_ext_S"] + feature["SUP_fachada_ext_SE"] +    feature["SUP_fachada_ext_E"] + feature["SUP_fachada_ext_NE"]
+    feature['flujo_masico'] = feature['PERD_ventil'] * feature['V_edi'] /3600
+    feature['UAeff'] = feature['U_muro'] * feature['A_sup'] * 0.76  + feature['U_huecos'] * feature['A_sup'] * 0.24 + feature['AreaCubier_edi'] * 0.55 + feature['AreaCubier_edi'] * feature['U_cubierta']    
+    feature['RhoVcp'] = feature['flujo_masico'] * 1.225 * 1007
+    feature['UAeffplusRhoVcp'] = (feature['UAeff'] + feature['RhoVcp']) / 1000
+
+    capa_copia.updateFeature(feature)
+
+capa_copia.commitChanges()
+

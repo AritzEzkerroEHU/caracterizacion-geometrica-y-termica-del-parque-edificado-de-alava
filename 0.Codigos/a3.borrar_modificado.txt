@@ -1,0 +1,20 @@
+import os
+import shutil
+from qgis.core import QgsProject
+from PyQt5.QtWidgets import QFileDialog
+
+ruta = QFileDialog.getExistingDirectory(None, "Selecciona la carpeta con los archivos originales")
+ruta_modificado = QFileDialog.getExistingDirectory(None, "Selecciona la carpeta para guardar los archivos modificados")
+
+os.makedirs(ruta_modificado, exist_ok=True)
+
+for elemento in os.listdir(ruta_modificado):
+    ruta_elemento = os.path.join(ruta_modificado, elemento)
+    try:
+        if os.path.isfile(ruta_elemento) or os.path.islink(ruta_elemento):
+            os.remove(ruta_elemento)
+        elif os.path.isdir(ruta_elemento):
+            shutil.rmtree(ruta_elemento)
+    except Exception as e:
+        print(f"No se pudo borrar {ruta_elemento}: {e}")
+

@@ -1,0 +1,30 @@
+from qgis.core import QgsVectorLayer, QgsRasterLayer, QgsProject
+import os
+
+proyecto = QgsProject.instance()
+
+for archivo in os.listdir(ruta_modificado):
+    ruta_completa = os.path.join(ruta_modificado, archivo)
+    nombre, extension = os.path.splitext(archivo)
+    extension = extension.lower()
+
+    if extension == ".shp":
+        capa = QgsVectorLayer(ruta_completa, nombre, "ogr")
+        if capa.isValid():
+            proyecto.addMapLayer(capa)
+    elif extension == ".tif":
+        capa = QgsRasterLayer(ruta_completa, nombre)
+        if capa.isValid():
+            proyecto.addMapLayer(capa)
+    elif extension == ".csv":
+
+        uri = f"file:///{ruta_completa}?type=csv&delimiter=;&detectTypes=yes&geomType=none&header=yes"
+        capa_csv = QgsVectorLayer(uri, nombre, "delimitedtext")
+        if capa_csv.isValid():
+            proyecto.addMapLayer(capa_csv)
+    elif extension == ".gpkg":
+
+        gpkg_layers = QgsVectorLayer(f"{ruta_completa}|layername=", nombre, "ogr")
+        if gpkg_layers.isValid():
+            proyecto.addMapLayer(gpkg_layers)
+

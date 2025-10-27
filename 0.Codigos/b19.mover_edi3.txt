@@ -1,0 +1,91 @@
+from qgis.core import QgsProject, QgsField, QgsVectorFileWriter
+from PyQt5.QtCore import QVariant
+import os
+
+# --- 1. Obtener la capa temporal ---
+nombre_capa = "edificio_corregida_2"
+capas = QgsProject.instance().mapLayersByName(nombre_capa)
+if not capas:
+    raise Exception(f"No se encontró la capa '{nombre_capa}'")
+capa_origen = capas[0]
+
+# --- 2. Definir ruta de destino solo si quieres guardar en disco ---
+# ⚡ Si no quieres guardar en disco, puedes comentar esta línea
+ruta_destino = os.path.join(ruta_modificado, "edificio_corregida_3.gpkg")
+
+# --- 3. Crear copia en disco solo si ruta_destino existe ---
+if ruta_destino:
+    error = QgsVectorFileWriter.writeAsVectorFormat(
+        capa_origen,
+        ruta_destino,
+        "UTF-8",
+        capa_origen.crs(),
+        "GPKG"
+    )
+    if error == QgsVectorFileWriter.NoError:
+        print(f"Capa copiada correctamente a '{ruta_destino}'")
+    # Cargar la copia recién creada
+    capa_copia = QgsProject.instance().mapLayersByName("edificio_corregida_3")
+    if capa_copia:
+        capa_copia = capa_copia[0]
+    else:
+        from qgis.core import QgsVectorLayer
+        capa_copia = QgsVectorLayer(ruta_destino + "|layername=edificio_corregida_3",
+                                    "edificio_corregida_3", "ogr")
+        QgsProject.instance().addMapLayer(capa_copia)
+else:
+    # Si no se guarda en disco, trabajar directamente sobre la capa en memoria
+    capa_copia = capa_origen
+
+# --- 4. Añadir campos si no existen ---
+capa_copia.startEditing()
+campos_nuevos = []
+if 'ANO_periodo' not in [f.name() for f in capa_copia.fields()]:
+    campos_nuevos.append(QgsField("ANO_periodo", QVariant.String))
+if 'U_muro' not in [f.name() for f in capa_copia.fields()]:
+    campos_nuevos.append(QgsField("U_muro", QVariant.Double))
+if 'U_cubierta' not in [f.name() for f in capa_copia.fields()]:
+    campos_nuevos.append(QgsField("U_cubierta", QVariant.Double))
+if 'U_huecos' not in [f.name() for f in capa_copia.fields()]:
+    campos_nuevos.append(QgsField("U_huecos", QVariant.Double))
+if 'Ventilacio' not in [f.name() for f in capa_copia.fields()]:
+    campos_nuevos.append(QgsField("Ventilacio", QVariant.Double))
+if 'Infiltraci' not in [f.name() for f in capa_copia.fields()]:
+    campos_nuevos.append(QgsField("Infiltraci", QVariant.Double))
+if campos_nuevos:
+    capa_copia.dataProvider().addAttributes(campos_nuevos)
+    capa_copia.updateFields()
+
+# --- 5. Calcular campos ---
+for feature in capa_copia.getFeatures():
+    ano_est = feature['ANO_est']
+
+    # ANO_periodo y valores de U
+    if ano_est < 1940:
+        feature['ANO_periodo'] = 'Anterior 1940'
+        feature['U_muro'], feature['U_cubierta'], feature['U_huecos'] = 2.63, 3.38, 3.90
+    elif 1940 <= ano_est < 1960:
+        feature['ANO_periodo'] = '1940-1959'
+        feature['U_muro'], feature['U_cubierta'], feature['U_huecos'] = 2.53, 2.65, 3.90
+    elif 1960 <= ano_est < 1980:
+        feature['ANO_periodo'] = '1960-1979'
+        feature['U_muro'], feature['U_cubierta'], feature['U_huecos'] = 1.43, 2.27, 3.90
+    elif 1980 <= ano_est < 2006:
+        feature['ANO_periodo'] = '1980-2005'
+        feature['U_muro'], feature['U_cubierta'], feature['U_huecos'] = 1.80, 1.40, 3.70
+    elif 2006 <= ano_est < 2013:
+        feature['ANO_periodo'] = '2006-2012'
+        feature['U_muro'], feature['U_cubierta'], feature['U_huecos'] = 0.95, 0.53, 4.40
+    elif 2013 <= ano_est < 2019:
+        feature['ANO_periodo'] = '2013-2018'
+        feature['U_muro'], feature['U_cubierta'], feature['U_huecos'] = 0.75, 0.50, 3.10
+    else:
+        feature['ANO_periodo'] = 'Despues 2019'
+        feature['U_muro'], feature['U_cubierta'], feature['U_huecos'] = 0.49, 0.40, 2.10
+
+    feature['Ventilacio'] = 0.45
+    feature['Infiltraci'] = 0.60 if ano_est < 1979 else 0.40
+
+    capa_copia.updateFeature(feature)
+
+capa_copia.commitChanges()

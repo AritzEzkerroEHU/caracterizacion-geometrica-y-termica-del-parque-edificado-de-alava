@@ -1,0 +1,9 @@
+import os
+import sys
+import shutil
+from qgis.core import QgsProject
+
+# --- 1. Quitar todas las capas cargadas ---
+proyecto = QgsProject.instance()
+for layer in list(proyecto.mapLayers().values()):
+    proyecto.removeMapLayer(layer)

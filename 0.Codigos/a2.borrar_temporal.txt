@@ -1,0 +1,13 @@
+def eliminar_todas_las_capas_temporales():
+    """Elimina del proyecto todas las capas temporales (vectoriales y raster)."""
+    proyecto = QgsProject.instance()
+    capas_a_eliminar = []
+
+    for capa in proyecto.mapLayers().values():
+        if hasattr(capa, 'isTemporary') and capa.isTemporary():
+            capas_a_eliminar.append((capa.id(), capa.name()))
+    for layer_id, layer_name in capas_a_eliminar:
+        QgsProject.instance().removeMapLayer(layer_id)
+        print(f"Capa temporal '{layer_name}' eliminada del proyecto.")
+
+eliminar_todas_las_capas_temporales()

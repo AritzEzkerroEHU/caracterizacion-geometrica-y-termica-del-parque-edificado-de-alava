@@ -1,0 +1,52 @@
+import os
+import glob
+import processing
+from qgis.core import QgsVectorLayer, QgsProject, QgsVectorFileWriter
+
+# --- Función auxiliar: borrar shapefile completo ---
+def borrar_shapefile_completo(ruta_shp):
+    base, _ = os.path.splitext(ruta_shp)
+    for f in glob.glob(base + ".*"):
+        try:
+            os.remove(f)
+        except:
+            pass
+
+# --- Capa de entrada ---
+nombre_capa = "division_altura_2"
+capas = QgsProject.instance().mapLayersByName(nombre_capa)
+if capas:
+    capa_origen = capas[0]
+
+    # --- Guardar capa original en shapefile temporal ---
+    ruta_temp = os.path.join(ruta_modificado, "division_altura_2_temp.shp")
+    borrar_shapefile_completo(ruta_temp)
+    QgsVectorFileWriter.writeAsVectorFormat(
+        capa_origen,
+        ruta_temp,
+        "UTF-8",
+        capa_origen.crs(),
+        "ESRI Shapefile"
+    )
+
+    # --- Convertir polígonos a líneas (perímetro) ---
+    ruta_perimetro = os.path.join(ruta_modificado, "division_altura_perimetro.shp")
+    borrar_shapefile_completo(ruta_perimetro)
+    processing.run("native:polygonstolines", {
+        'INPUT': ruta_temp,
+        'OUTPUT': ruta_perimetro
+    })
+    lineas_perimetro = QgsVectorLayer(ruta_perimetro, "division_altura_perimetro", "ogr")
+    if lineas_perimetro.isValid():
+        QgsProject.instance().addMapLayer(lineas_perimetro)
+
+    # --- Explotar líneas ---
+    ruta_lineas = os.path.join(ruta_modificado, "division_altura_lineas.shp")
+    borrar_shapefile_completo(ruta_lineas)
+    processing.run("native:explodelines", {
+        'INPUT': ruta_perimetro,
+        'OUTPUT': ruta_lineas
+    })
+    lineas_explotadas = QgsVectorLayer(ruta_lineas, "division_altura_lineas", "ogr")
+    if lineas_explotadas.isValid():
+        QgsProject.instance().addMapLayer(lineas_explotadas)

@@ -1,0 +1,55 @@
+from qgis.core import QgsProject, QgsField, QgsExpression, QgsExpressionContext, QgsExpressionContextUtils
+from PyQt5.QtCore import QVariant
+
+# --- Capa destino ---
+destino = QgsProject.instance().mapLayersByName('division_altura_lineas_1')[0]
+
+# --- Crear campos calculados si no existen ---
+campos_calculados = {
+    "x1": QVariant.Double,
+    "x2": QVariant.Double,
+    "y1": QVariant.Double,
+    "y2": QVariant.Double,
+    "Length": QVariant.Double
+}
+destino.startEditing()
+campos_existentes = [f.name() for f in destino.fields()]
+for nombre, tipo in campos_calculados.items():
+    if nombre not in campos_existentes:
+        destino.addAttribute(QgsField(nombre, tipo))
+destino.updateFields()
+
+# --- Expresiones ---
+expresiones = {
+    "x1": 'x(start_point($geometry))',
+    "x2": 'x(end_point($geometry))',
+    "y1": 'y(start_point($geometry))',
+    "y2": 'y(end_point($geometry))', 
+    "Length": '$length'
+}
+
+
+# --- Crear contexto de expresión ---
+contexto = QgsExpressionContext()
+contexto.appendScopes(QgsExpressionContextUtils.globalProjectLayerScopes(destino))
+
+# --- Calcular valores por etapas ---
+# 1️⃣ x1, x2, y1, y2
+for feat in destino.getFeatures():
+    contexto.setFeature(feat)
+    for campo in ["x1","x2","y1","y2"]:
+        expr = QgsExpression(expresiones[campo])
+        valor = expr.evaluate(contexto)
+        feat[campo] = valor if valor is not None else 0
+    destino.updateFeature(feat)
+
+# 4️⃣ Length
+for feat in destino.getFeatures():
+    contexto.setFeature(feat)
+    expr = QgsExpression(expresiones["Length"])
+    valor = expr.evaluate(contexto)
+    feat["Length"] = valor if valor is not None else 0
+    destino.updateFeature(feat)
+
+destino.commitChanges()
+
